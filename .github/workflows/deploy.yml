@@ -35,12 +35,6 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          build-args: |
-            NODE_ENV=production
-            PORT=5000
-            RAPID_API_KEY=${{ secrets.RAPID_API_KEY }}
-            RAPID_API_HOST=${{ secrets.RAPID_API_HOST }}
-            CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
