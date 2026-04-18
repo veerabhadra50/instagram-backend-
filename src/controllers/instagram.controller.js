@@ -158,10 +158,30 @@ export const enrichMedia = handle(async (req) => {
 
 export const getAllPostsReels = handle(async (req) => {
   const igUrl = `https://www.instagram.com/${cleanUsername(req.params.username)}/`
-  const getThumbnail = (item) => item.image_versions2?.candidates?.[0]?.url || item.thumbnail_url || item.display_url || ''
-  const [postsData, reelsData] = await Promise.all([fetchAllPosts(igUrl), fetchAllReels(igUrl)])
-  const posts = (postsData.posts || []).map(i => { const item = i.node || i; return { id: item.id || item.pk, code: item.code || item.shortcode || null, likes: item.like_count || 0, comments: item.comment_count || 0, views: item.video_play_count || item.play_count || 0, shares: 0, media_type: item.product_type === 'clips' ? 'reel' : 'image', date: item.taken_at ? new Date(item.taken_at * 1000).toISOString().split('T')[0] : '' } })
-  const reels = (reelsData.reels || []).map(i => { const item = (i.node?.media) || i.node || i; return { id: item.id || item.pk, code: item.code || item.shortcode || null, likes: item.like_count || 0, views: item.video_play_count || item.play_count || 0, comments: item.comment_count || 0, shares: 0, media_type: 'reel', date: item.taken_at ? new Date(item.taken_at * 1000).toISOString().split('T')[0] : '' } })
+  const postsData = await fetchAllPosts(igUrl)
+
+  const seenIds = new Set()
+  const posts = []
+  const reels = []
+
+  for (const i of (postsData.posts || [])) {
+    const item = i.node || i
+    const id = item.id || item.pk
+    if (!id || seenIds.has(id)) continue
+    seenIds.add(id)
+    const takenAt = item.taken_at || i.taken_at
+    const date = takenAt ? new Date(takenAt * 1000).toISOString().split('T')[0] : ''
+    const isReel = item.product_type === 'clips' || item.media_type === 2
+    const entry = {
+      id, code: item.code || item.shortcode || null,
+      likes: item.like_count || 0, comments: item.comment_count || 0,
+      views: item.video_play_count || item.play_count || item.view_count || 0,
+      shares: 0, media_type: isReel ? 'reel' : 'image', date
+    }
+    if (isReel) reels.push(entry)
+    else posts.push(entry)
+  }
+
   return { posts, reels }
 })
 

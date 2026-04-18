@@ -4,12 +4,17 @@ import dotenv from "dotenv";
 import instagramRoutes from "./routes/instagram.routes.js";
 
 if (process.env.NODE_ENV !== 'production') {
-  dotenv.config({ path: new URL(`.env.${process.env.NODE_ENV || 'development'}`, import.meta.url) });
+  dotenv.config({ path: new URL('../.env.development', import.meta.url) });
+  dotenv.config({ path: new URL('.env', import.meta.url) }); // fallback
 }
 
 const app = express();
 
-app.use(cors({ origin: process.env.CORS_ORIGIN?.split(',') }));
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',')
+  : ['http://localhost:5173', 'http://localhost:5174'];
+
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 app.use("/api/instagram", instagramRoutes);

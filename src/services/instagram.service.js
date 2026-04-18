@@ -39,7 +39,7 @@ export const fetchPosts = (usernameOrUrl) =>
 
 export const fetchAllPosts = async (usernameOrUrl) => {
   let all = [], token = "", page = 0
-  while (page < 3) {
+  while (page < 30) {
     const res = await post("/get_ig_user_posts.php", { username_or_url: usernameOrUrl, amount: "50", pagination_token: token })
     const items = res.posts || []
     all = all.concat(items)
@@ -53,11 +53,49 @@ export const fetchAllPosts = async (usernameOrUrl) => {
 export const fetchReels = (usernameOrUrl) =>
   post("/get_ig_user_reels.php", { username_or_url: usernameOrUrl, amount: "50", pagination_token: "" });
 
+// Extract date from Instagram media ID (timestamp encoded in top 32 bits)
+const dateFromMediaId = (id) => {
+  try {
+    if (!id) return ''
+    const ts = Math.floor(parseInt(BigInt(id.toString()).toString()) / 1000000000000)
+    if (ts > 1000000000 && ts < 9999999999) return new Date(ts * 1000).toISOString().split('T')[0]
+    // fallback: shift right 23 bits
+    const shifted = Number(BigInt(id.toString()) >> 23n)
+    if (shifted > 1000000000 && shifted < 9999999999) return new Date(shifted * 1000).toISOString().split('T')[0]
+  } catch { }
+  return ''
+}
+
+const extractReelDate = (i) => {
+  const item = (i.node?.media) || i.node || i
+  const ts = item.taken_at || i.taken_at || item.device_timestamp || i.device_timestamp
+    || item.caption?.created_at || item.clip_metadata?.original_sound_info?.progressive_download_url
+    || item.organic_tracking_token || null
+  if (ts && typeof ts === 'number' && ts > 1000000000) return new Date(ts * 1000).toISOString().split('T')[0]
+  // Extract from Instagram media ID (top bits encode timestamp)
+  const id = item.id || item.pk || i.id || i.pk
+  if (id) {
+    try {
+      const shifted = Number(BigInt(String(id)) >> 23n)
+      if (shifted > 1000000000 && shifted < 9999999999) return new Date(shifted * 1000).toISOString().split('T')[0]
+    } catch {}
+  }
+  return ''
+}
+
 export const fetchAllReels = async (usernameOrUrl) => {
   let all = [], token = "", page = 0
-  while (page < 3) {
+  while (page < 10) {
     const res = await post("/get_ig_user_reels.php", { username_or_url: usernameOrUrl, amount: "50", pagination_token: token })
     const items = res.reels || []
+    if (page === 0 && items.length > 0) {
+      const sample = items[0]
+      const item = (sample.node?.media) || sample.node || sample
+      console.log("[REEL KEYS]", Object.keys(sample))
+      console.log("[REEL ITEM KEYS]", Object.keys(item))
+      console.log("[REEL taken_at]", item.taken_at, sample.taken_at, "[id]", item.id || item.pk)
+      console.log("[REEL DATE RESULT]", extractReelDate(sample))
+    }
     all = all.concat(items)
     token = res.pagination_token || ""
     page++
