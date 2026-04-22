@@ -158,30 +158,63 @@ export const enrichMedia = handle(async (req) => {
 
 export const getAllPostsReels = handle(async (req) => {
   const igUrl = `https://www.instagram.com/${cleanUsername(req.params.username)}/`
-  const postsData = await fetchAllPosts(igUrl)
+  const [postsData, reelsData] = await Promise.all([fetchAllPosts(igUrl), fetchAllReels(igUrl)])
+
+  // Build maps from reels API: id -> views, id -> date
+  const reelViewsMap = new Map()
+  const reelDateMap = new Map()
+  for (const i of (reelsData.reels || [])) {
+    const item = (i.node?.media) || i.node || i
+    const id = String(item.id || item.pk || i.id || i.pk || '')
+    if (!id) continue
+    const views = item.video_play_count || item.play_count || item.view_count || item.ig_play_count || i.play_count || 0
+    const takenAt = item.taken_at || i.taken_at || item.device_timestamp || i.device_timestamp
+    if (views) reelViewsMap.set(id, views)
+    if (takenAt) reelDateMap.set(id, takenAt)
+  }
 
   const seenIds = new Set()
   const posts = []
   const reels = []
 
+  // Process posts feed — reels here have date but no views
   for (const i of (postsData.posts || [])) {
     const item = i.node || i
-    const id = item.id || item.pk
+    const id = String(item.id || item.pk || '')
     if (!id || seenIds.has(id)) continue
     seenIds.add(id)
-    const takenAt = item.taken_at || i.taken_at
+    const takenAt = item.taken_at || i.taken_at || reelDateMap.get(id)
     const date = takenAt ? new Date(takenAt * 1000).toISOString().split('T')[0] : ''
     const isReel = item.product_type === 'clips' || item.media_type === 2
+    // For reels: get views from reels API map (posts API doesn't return play counts)
+    const views = isReel ? (reelViewsMap.get(id) || item.video_play_count || item.play_count || 0) : 0
     const entry = {
       id, code: item.code || item.shortcode || null,
       likes: item.like_count || 0, comments: item.comment_count || 0,
-      views: item.video_play_count || item.play_count || item.view_count || 0,
-      shares: 0, media_type: isReel ? 'reel' : 'image', date
+      views, shares: 0, media_type: isReel ? 'reel' : 'image', date
     }
     if (isReel) reels.push(entry)
     else posts.push(entry)
   }
 
+  // Add reels from reels API not already in posts feed
+  for (const i of (reelsData.reels || [])) {
+    const item = (i.node?.media) || i.node || i
+    const id = String(item.id || item.pk || i.id || i.pk || '')
+    if (!id || seenIds.has(id)) continue
+    seenIds.add(id)
+    const takenAt = item.taken_at || i.taken_at || item.device_timestamp || i.device_timestamp
+    const date = takenAt ? new Date(takenAt * 1000).toISOString().split('T')[0] : ''
+    const views = item.video_play_count || item.play_count || item.view_count || item.ig_play_count || i.play_count || 0
+    reels.push({
+      id, code: item.code || item.shortcode || i.code || null,
+      likes: item.like_count || item.likes || 0,
+      comments: item.comment_count || item.comments || 0,
+      views, shares: 0, media_type: 'reel', date
+    })
+  }
+
+  console.log(`[getAllPostsReels] posts=${posts.length} reels=${reels.length}`)
   return { posts, reels }
 })
 
