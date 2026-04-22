@@ -190,7 +190,7 @@ export const getAllPostsReels = async (req, res) => {
 
     // Paginate posts
     let token = '', page = 0
-    while (page < 50) {
+    while (page < 75) {
       try {
         const r = await post('/get_ig_user_posts.php', { username_or_url: igUrl, amount: '35', pagination_token: token })
         const items = r.posts || []
@@ -214,7 +214,7 @@ export const getAllPostsReels = async (req, res) => {
 
     // Paginate reels for view counts
     token = ''; page = 0
-    while (page < 50) {
+    while (page < 75) {
       try {
         const r = await post('/get_ig_user_reels.php', { username_or_url: igUrl, amount: '35', pagination_token: token })
         const items = r.reels || []
