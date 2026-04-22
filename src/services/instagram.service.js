@@ -33,7 +33,7 @@ export const searchInstagram = (query) =>
 export const fetchPosts = (usernameOrUrl) =>
   post("/get_ig_user_posts.php", { username_or_url: usernameOrUrl, amount: "50", pagination_token: "" });
 
-export const fetchAllPosts = async (usernameOrUrl) => {
+export const fetchAllPosts = async (usernameOrUrl, maxItems = 1500) => {
   let all = [], token = "", page = 0
   while (page < 100) {
     const res = await post("/get_ig_user_posts.php", { username_or_url: usernameOrUrl, amount: "50", pagination_token: token })
@@ -42,7 +42,7 @@ export const fetchAllPosts = async (usernameOrUrl) => {
     token = res.pagination_token || ""
     page++
     console.log(`[fetchAllPosts] page=${page} fetched=${items.length} total=${all.length}`)
-    if (!token || items.length === 0) break
+    if (!token || items.length === 0 || all.length >= maxItems) break
   }
   return { posts: all }
 }

@@ -170,8 +170,18 @@ export const enrichMedia = handle(async (req) => {
 })
 
 export const getAllPostsReels = handleLong(async (req) => {
-  const igUrl = `https://www.instagram.com/${cleanUsername(req.params.username)}/`
-  const [postsData, reelsData] = await Promise.all([fetchAllPosts(igUrl), fetchAllReels(igUrl)])
+  const username = cleanUsername(req.params.username)
+  const igUrl = `https://www.instagram.com/${username}/`
+
+  // Get media_count first to know when to stop
+  const profileData = await fetchAccountData(igUrl).catch(() => ({}))
+  const mediaCount = profileData.media_count || 1500
+  console.log(`[getAllPostsReels] media_count=${mediaCount}`)
+
+  const [postsData, reelsData] = await Promise.all([
+    fetchAllPosts(igUrl, mediaCount + 50),
+    fetchAllReels(igUrl)
+  ])
 
   // Build maps from reels API: id -> views, id -> date
   const reelViewsMap = new Map()
