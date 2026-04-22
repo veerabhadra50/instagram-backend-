@@ -5,7 +5,9 @@ import instagramRoutes from "./routes/instagram.routes.js";
 
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config({ path: new URL('../.env.development', import.meta.url) });
-  dotenv.config({ path: new URL('.env', import.meta.url) }); // fallback
+  dotenv.config({ path: new URL('.env', import.meta.url) });
+} else {
+  dotenv.config({ path: new URL('../.env.production', import.meta.url) });
 }
 
 const app = express();

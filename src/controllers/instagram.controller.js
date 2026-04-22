@@ -37,6 +37,19 @@ const handle = (fn) => async (req, res) => {
   }
 };
 
+const handleLong = (fn) => async (req, res) => {
+  // Keep connection alive during long pagination requests
+  req.socket.setTimeout(300000);
+  res.setTimeout(300000);
+  try {
+    const data = await fn(req);
+    res.json(data);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 const getMediaCode = (item) =>
   item.code || item.shortcode || item.media_code || null
 
@@ -156,7 +169,7 @@ export const enrichMedia = handle(async (req) => {
   return { items: enriched }
 })
 
-export const getAllPostsReels = handle(async (req) => {
+export const getAllPostsReels = handleLong(async (req) => {
   const igUrl = `https://www.instagram.com/${cleanUsername(req.params.username)}/`
   const [postsData, reelsData] = await Promise.all([fetchAllPosts(igUrl), fetchAllReels(igUrl)])
 
