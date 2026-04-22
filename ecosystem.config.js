@@ -9,6 +9,7 @@ export default {
       env_production: {
         NODE_ENV: 'production',
         PORT: 5000,
+        CORS_ORIGIN: 'https://instagramanalysis.abholdings.info',
       },
       error_file: '/var/log/instagram-backend/error.log',
       out_file: '/var/log/instagram-backend/out.log',
