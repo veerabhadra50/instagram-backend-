@@ -23,6 +23,7 @@ import {
   fetchChildComments,
   searchHashtag,
   searchInstagram,
+  post,
 } from "../services/instagram.service.js";
 
 import { cleanUsername } from "../utils/validator.js";
@@ -169,77 +170,80 @@ export const enrichMedia = handle(async (req) => {
   return { items: enriched }
 })
 
-export const getAllPostsReels = handleLong(async (req) => {
+export const getAllPostsReels = async (req, res) => {
   const username = cleanUsername(req.params.username)
   const igUrl = `https://www.instagram.com/${username}/`
 
-  // Get media_count first to know when to stop
-  const profileData = await fetchAccountData(igUrl).catch(() => ({}))
-  const mediaCount = profileData.media_count || 1500
-  console.log(`[getAllPostsReels] media_count=${mediaCount}`)
+  // SSE headers — keeps connection alive during long pagination
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
 
-  const [postsData, reelsData] = await Promise.all([
-    fetchAllPosts(igUrl, mediaCount + 50),
-    fetchAllReels(igUrl)
-  ])
+  const send = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`)
 
-  // Build maps from reels API: id -> views, id -> date
-  const reelViewsMap = new Map()
-  const reelDateMap = new Map()
-  for (const i of (reelsData.reels || [])) {
-    const item = (i.node?.media) || i.node || i
-    const id = String(item.id || item.pk || i.id || i.pk || '')
-    if (!id) continue
-    const views = item.video_play_count || item.play_count || item.view_count || item.ig_play_count || i.play_count || 0
-    const takenAt = item.taken_at || i.taken_at || item.device_timestamp || i.device_timestamp
-    if (views) reelViewsMap.set(id, views)
-    if (takenAt) reelDateMap.set(id, takenAt)
-  }
+  try {
+    const profileData = await fetchAccountData(igUrl).catch(() => ({}))
+    const mediaCount = profileData.media_count || 500
 
-  const seenIds = new Set()
-  const posts = []
-  const reels = []
+    const posts = [], reels = [], seenIds = new Set()
 
-  // Process posts feed — reels here have date but no views
-  for (const i of (postsData.posts || [])) {
-    const item = i.node || i
-    const id = String(item.id || item.pk || '')
-    if (!id || seenIds.has(id)) continue
-    seenIds.add(id)
-    const takenAt = item.taken_at || i.taken_at || reelDateMap.get(id)
-    const date = takenAt ? new Date(takenAt * 1000).toISOString().split('T')[0] : ''
-    const isReel = item.product_type === 'clips' || item.media_type === 2
-    // For reels: get views from reels API map (posts API doesn't return play counts)
-    const views = isReel ? (reelViewsMap.get(id) || item.video_play_count || item.play_count || 0) : 0
-    const entry = {
-      id, code: item.code || item.shortcode || null,
-      likes: item.like_count || 0, comments: item.comment_count || 0,
-      views, shares: 0, media_type: isReel ? 'reel' : 'image', date
+    // Paginate posts
+    let token = '', page = 0
+    while (page < 50) {
+      try {
+        const r = await post('/get_ig_user_posts.php', { username_or_url: igUrl, amount: '35', pagination_token: token })
+        const items = r.posts || []
+        for (const i of items) {
+          const item = i.node || i
+          const id = String(item.id || item.pk || '')
+          if (!id || seenIds.has(id)) continue
+          seenIds.add(id)
+          const isReel = item.product_type === 'clips' || item.media_type === 2
+          const date = item.taken_at ? new Date(item.taken_at * 1000).toISOString().split('T')[0] : ''
+          const entry = { id, code: item.code || item.shortcode || null, likes: item.like_count || 0, comments: item.comment_count || 0, views: item.video_play_count || item.play_count || 0, shares: 0, media_type: isReel ? 'reel' : 'image', date }
+          if (isReel) reels.push(entry); else posts.push(entry)
+        }
+        send({ type: 'progress', posts: posts.length, reels: reels.length })
+        token = r.pagination_token || ''
+        page++
+        if (!token || items.length === 0 || (posts.length + reels.length) >= mediaCount) break
+        await new Promise(r => setTimeout(r, 150))
+      } catch { break }
     }
-    if (isReel) reels.push(entry)
-    else posts.push(entry)
+
+    // Paginate reels for view counts
+    token = ''; page = 0
+    while (page < 50) {
+      try {
+        const r = await post('/get_ig_user_reels.php', { username_or_url: igUrl, amount: '35', pagination_token: token })
+        const items = r.reels || []
+        for (const i of items) {
+          const item = (i.node?.media) || i.node || i
+          const id = String(item.id || item.pk || '')
+          const views = item.video_play_count || item.play_count || item.view_count || 0
+          const existing = reels.find(r => r.id === id)
+          if (existing) { existing.views = views || existing.views; continue }
+          if (seenIds.has(id)) continue
+          seenIds.add(id)
+          const date = item.taken_at ? new Date(item.taken_at * 1000).toISOString().split('T')[0] : ''
+          reels.push({ id, code: item.code || item.shortcode || null, likes: item.like_count || 0, comments: item.comment_count || 0, views, shares: 0, media_type: 'reel', date })
+        }
+        send({ type: 'progress', posts: posts.length, reels: reels.length })
+        token = r.pagination_token || ''
+        page++
+        if (!token || items.length === 0) break
+        await new Promise(r => setTimeout(r, 150))
+      } catch { break }
+    }
+
+    send({ type: 'done', posts, reels })
+  } catch (err) {
+    send({ type: 'error', message: err.message })
   }
 
-  // Add reels from reels API not already in posts feed
-  for (const i of (reelsData.reels || [])) {
-    const item = (i.node?.media) || i.node || i
-    const id = String(item.id || item.pk || i.id || i.pk || '')
-    if (!id || seenIds.has(id)) continue
-    seenIds.add(id)
-    const takenAt = item.taken_at || i.taken_at || item.device_timestamp || i.device_timestamp
-    const date = takenAt ? new Date(takenAt * 1000).toISOString().split('T')[0] : ''
-    const views = item.video_play_count || item.play_count || item.view_count || item.ig_play_count || i.play_count || 0
-    reels.push({
-      id, code: item.code || item.shortcode || i.code || null,
-      likes: item.like_count || item.likes || 0,
-      comments: item.comment_count || item.comments || 0,
-      views, shares: 0, media_type: 'reel', date
-    })
-  }
-
-  console.log(`[getAllPostsReels] posts=${posts.length} reels=${reels.length}`)
-  return { posts, reels }
-})
+  res.end()
+}
 
 export const getProfile = handle((req) => fetchAccountData(`https://www.instagram.com/${cleanUsername(req.params.username)}/`));
 export const getAccountData = handle((req) => fetchAccountData(`https://www.instagram.com/${cleanUsername(req.params.username)}/`));

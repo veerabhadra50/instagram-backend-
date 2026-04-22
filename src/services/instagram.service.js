@@ -9,7 +9,7 @@ const getConfig = () => ({
   },
 });
 
-const post = async (path, body) => {
+export const post = async (path, body) => {
   const { baseURL, headers } = getConfig();
   const res = await axios.post(`${baseURL}${path}`, new URLSearchParams(body), { headers });
   return res.data;
@@ -36,13 +36,19 @@ export const fetchPosts = (usernameOrUrl) =>
 export const fetchAllPosts = async (usernameOrUrl, maxItems = 1500) => {
   let all = [], token = "", page = 0
   while (page < 100) {
-    const res = await post("/get_ig_user_posts.php", { username_or_url: usernameOrUrl, amount: "50", pagination_token: token })
-    const items = res.posts || []
-    all = all.concat(items)
-    token = res.pagination_token || ""
-    page++
-    console.log(`[fetchAllPosts] page=${page} fetched=${items.length} total=${all.length}`)
-    if (!token || items.length === 0 || all.length >= maxItems) break
+    try {
+      const res = await post("/get_ig_user_posts.php", { username_or_url: usernameOrUrl, amount: "35", pagination_token: token })
+      const items = res.posts || []
+      all = all.concat(items)
+      token = res.pagination_token || ""
+      page++
+      console.log(`[fetchAllPosts] page=${page} fetched=${items.length} total=${all.length}`)
+      if (!token || items.length === 0 || all.length >= maxItems) break
+      await new Promise(r => setTimeout(r, 200))
+    } catch (err) {
+      console.log(`[fetchAllPosts] stopped at page=${page} total=${all.length} error=${err.message}`)
+      break
+    }
   }
   return { posts: all }
 }
@@ -53,13 +59,19 @@ export const fetchReels = (usernameOrUrl) =>
 export const fetchAllReels = async (usernameOrUrl) => {
   let all = [], token = "", page = 0
   while (page < 100) {
-    const res = await post("/get_ig_user_reels.php", { username_or_url: usernameOrUrl, amount: "50", pagination_token: token })
-    const items = res.reels || []
-    all = all.concat(items)
-    token = res.pagination_token || ""
-    page++
-    console.log(`[fetchAllReels] page=${page} fetched=${items.length} total=${all.length}`)
-    if (!token || items.length === 0) break
+    try {
+      const res = await post("/get_ig_user_reels.php", { username_or_url: usernameOrUrl, amount: "35", pagination_token: token })
+      const items = res.reels || []
+      all = all.concat(items)
+      token = res.pagination_token || ""
+      page++
+      console.log(`[fetchAllReels] page=${page} fetched=${items.length} total=${all.length}`)
+      if (!token || items.length === 0) break
+      await new Promise(r => setTimeout(r, 200))
+    } catch (err) {
+      console.log(`[fetchAllReels] stopped at page=${page} total=${all.length} error=${err.message}`)
+      break
+    }
   }
   return { reels: all }
 }
